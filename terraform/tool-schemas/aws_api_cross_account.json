@@ -1,0 +1,30 @@
+[
+  {
+    "name": "call_aws",
+    "description": "Execute any AWS CLI command in the payer/management account via cross-account assumed role. Provide the full CLI command string (e.g., 'aws s3api list-buckets', 'aws ec2 describe-instances'). Only read-only operations (describe_*, list_*, get_*) are allowed. Returns the command output as JSON.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "cli_command": {
+          "type": "string",
+          "description": "The full AWS CLI command to execute (e.g., 'aws s3api list-buckets', 'aws ec2 describe-instances --region us-west-2')"
+        }
+      },
+      "required": ["cli_command"]
+    }
+  },
+  {
+    "name": "suggest_aws_commands",
+    "description": "Get AWS CLI command suggestions based on a natural language query. Useful for discovering the right CLI command to use. Commands will execute in the payer/management account.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Natural language description of what you want to do (e.g., 'list all S3 buckets', 'get EC2 instance details')"
+        }
+      },
+      "required": ["query"]
+    }
+  }
+]

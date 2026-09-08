@@ -1,0 +1,91 @@
+# -----------------------------------------------------------------------------
+# AWS FinOps Agent - Terraform Variables (Cross-Account Mode)
+# -----------------------------------------------------------------------------
+# Copy this file to terraform.tfvars and customize for your deployment.
+#
+# Cross-account mode: all resources in the cost account, Payer only gets
+# 1 IAM Role (ReadOnlyAccess) + CUR export.
+# -----------------------------------------------------------------------------
+
+# REQUIRED: Project name prefix (must start with letter, lowercase, hyphens ok)
+project_name = "finops-mcp"
+
+# AWS region to deploy resources
+aws_region = "us-east-1"
+
+# -----------------------------------------------------------------------------
+# AWS Profiles
+# -----------------------------------------------------------------------------
+
+# Profile for the cost account (where all resources are deployed)
+aws_profile = "cde-cost"
+
+# Profile for the Payer/management account (cross-account mode).
+# Set to non-empty to enable cross-account: Terraform creates a ReadOnlyAccess
+# IAM Role in Payer that Lambda assumes for Cost Explorer + resource queries.
+# Leave empty ("") for single-account mode (no Payer role created).
+management_account_profile = "default"
+
+# -----------------------------------------------------------------------------
+# MCP Server Image (self-built, Marketplace image is delisted)
+# -----------------------------------------------------------------------------
+
+# ECR registry in the cost account — you must build and push the image first.
+# See docker/Dockerfile and Step 3 in the deployment guide.
+mcp_server_image_registry = "<COST_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/finops-mcp/aws-api-mcp-server"
+mcp_server_image_version  = "1.4.1-fix1"
+
+# -----------------------------------------------------------------------------
+# Lambda Configuration
+# -----------------------------------------------------------------------------
+
+lambda_timeout     = 30
+lambda_memory_size = 256
+
+# -----------------------------------------------------------------------------
+# Gateway Authentication
+# -----------------------------------------------------------------------------
+
+# COGNITO: auto-provisions Cognito User Pool for M2M OAuth2.
+# After deploy, you must also create an AgentCore Identity OAuth2 credential
+# provider (Step 4b in the deployment guide) — this is NOT managed by Terraform.
+gateway_auth_type = "COGNITO"
+
+# -----------------------------------------------------------------------------
+# Runtime Permissions
+# -----------------------------------------------------------------------------
+
+runtime_aws_policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+
+# -----------------------------------------------------------------------------
+# CUR (Cost and Usage Report) Configuration
+# -----------------------------------------------------------------------------
+
+# S3 bucket in the cost account where Payer CUR 2.0 Export delivers data.
+# Must be created before deploy with bucket policy allowing bcm-data-exports
+# cross-account write (see Step 1 in the deployment guide).
+cur_bucket_name = "finops-cur-<COST_ACCOUNT_ID>"
+
+# Athena query results bucket (must be in the cost account, writable).
+cur_athena_output_location = "s3://finops-mcp-<COST_ACCOUNT_ID>-athena-results/"
+
+# -----------------------------------------------------------------------------
+# VPC Configuration
+# -----------------------------------------------------------------------------
+
+# POC: no VPC (saves ~$7/endpoint/AZ). Enable for production.
+enable_vpc = false
+
+# -----------------------------------------------------------------------------
+# Optional
+# -----------------------------------------------------------------------------
+
+environment = "dev"
+
+tags = {
+  Project     = "AWS FinOps Agent"
+  ManagedBy   = "Terraform"
+  Owner       = "your-alias"
+  CostCenter  = "your-cost-center"
+  auto-delete = "no"
+}
