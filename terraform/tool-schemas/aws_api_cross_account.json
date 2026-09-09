@@ -1,13 +1,17 @@
 [
   {
     "name": "call_aws",
-    "description": "Execute any AWS CLI command in the payer/management account via cross-account assumed role. Provide the full CLI command string (e.g., 'aws s3api list-buckets', 'aws ec2 describe-instances'). Only read-only operations (describe_*, list_*, get_*) are allowed. Returns the command output as JSON.",
+    "description": "Execute any AWS CLI command in the payer/management account via cross-account assumed role. Provide the full CLI command string (e.g., 'aws s3api list-buckets', 'aws ec2 describe-instances'). Only read-only operations (describe_*, list_*, get_*) are allowed. Returns the command output as JSON. Optionally pass account_id to query a specific member account instead of the payer (requires finops-mcp-readonly role in that account, deployed via StackSets).",
     "inputSchema": {
       "type": "object",
       "properties": {
         "cli_command": {
           "type": "string",
           "description": "The full AWS CLI command to execute (e.g., 'aws s3api list-buckets', 'aws ec2 describe-instances --region us-west-2')"
+        },
+        "account_id": {
+          "type": "string",
+          "description": "Optional 12-digit AWS account ID to target a specific member account. If omitted, defaults to the payer/management account. The target account must have the finops-mcp-readonly IAM role."
         }
       },
       "required": ["cli_command"]

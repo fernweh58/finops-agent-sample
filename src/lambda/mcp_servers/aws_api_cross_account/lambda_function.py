@@ -57,6 +57,19 @@ def kebab_to_snake(name):
     return name.replace("-", "_")
 
 
+def snake_to_pascal(name):
+    """Convert snake_case to PascalCase: metric_name -> MetricName.
+    Also handles kebab-case input: metric-name -> MetricName.
+    If already PascalCase (first letter uppercase, no _ or -), return as-is.
+    """
+    # Already PascalCase (e.g. MetricName, Namespace, Filters)
+    if name[0].isupper() and "_" not in name and "-" not in name:
+        return name
+    # kebab or snake → PascalCase
+    parts = name.replace("-", "_").split("_")
+    return "".join(word.capitalize() for word in parts)
+
+
 def parse_cli_command(cli_command):
     """Parse an AWS CLI command string into (service, operation, params, region).
 
@@ -102,34 +115,40 @@ def parse_cli_command(cli_command):
     i = 2
     while i < len(tokens):
         token = tokens[i]
-        if token == "--region" and i + 1 < len(tokens):
+        token_lower = token.lower()
+        if token_lower == "--region" and i + 1 < len(tokens):
             region = tokens[i + 1]
             i += 2
             continue
-        if token == "--output" and i + 1 < len(tokens):
+        if token_lower == "--output" and i + 1 < len(tokens):
             # Skip --output (we always return JSON)
             i += 2
             continue
-        if token == "--profile" and i + 1 < len(tokens):
+        if token_lower == "--profile" and i + 1 < len(tokens):
             # Skip --profile (we use cross-account role)
             i += 2
             continue
-        if token == "--query" and i + 1 < len(tokens):
+        if token_lower == "--query" and i + 1 < len(tokens):
             # Skip --query (JMESPath filter, handled client-side)
             i += 2
             continue
         if token.startswith("--"):
-            param_name = kebab_to_snake(token[2:])
-            # Check if next token is a value or another flag
-            if i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
-                value = tokens[i + 1]
-                # Try to parse JSON values
-                params[param_name] = _parse_value(value)
-                i += 2
-            else:
-                # Boolean flag
-                params[param_name] = True
+            param_name = snake_to_pascal(token[2:])
+            # Collect all non-flag tokens after this flag as values
+            values = []
+            while i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
+                values.append(tokens[i + 1])
                 i += 1
+            if len(values) == 0:
+                # Boolean flag (e.g. --no-paginate)
+                params[param_name] = True
+            elif len(values) == 1:
+                # Single value — try to parse as shorthand or JSON
+                params[param_name] = _parse_param_value(values[0])
+            else:
+                # Multiple values (e.g. --statistics Average Maximum)
+                params[param_name] = [_parse_value(v) for v in values]
+            i += 1
         else:
             i += 1
 
@@ -183,6 +202,35 @@ def _parse_value(value):
     return value
 
 
+def _parse_param_value(value):
+    """Parse a single param value, handling AWS CLI shorthand syntax.
+
+    Handles:
+    - JSON: [{"Name":"K","Value":"V"}] or {"key":"val"}
+    - Shorthand Key=Value pairs: Name=InstanceId,Value=i-xxx → [{"Name":"InstanceId","Value":"i-xxx"}]
+    - Plain values: "AWS/EC2", 86400, etc.
+    """
+    parsed = _parse_value(value)
+    if parsed != value:
+        # Already parsed as JSON/int/bool
+        return parsed
+
+    # Try AWS CLI shorthand: Name=K,Value=V pattern
+    # This is used for --dimensions, --filters, etc.
+    if "=" in value and not value.startswith("arn:"):
+        parts = value.split(",")
+        kv_pairs = {}
+        for part in parts:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                kv_pairs[k] = v
+        if kv_pairs:
+            # Wrap in list — most boto3 params that use shorthand expect a list
+            return [kv_pairs]
+
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Tool: call_aws — execute AWS API via boto3 (cross-account)
 # ---------------------------------------------------------------------------
@@ -219,10 +267,21 @@ def is_read_only(operation_name):
 
 
 def handle_call_aws(event):
-    """Execute an AWS API call via boto3 with cross-account assumed role."""
+    """Execute an AWS API call via boto3 with cross-account assumed role.
+
+    Supports optional account_id parameter to target a specific member account.
+    Without account_id, defaults to Payer/management account (CROSS_ACCOUNT_ROLE_ARN).
+    """
     cli_command = event.get("cli_command", "")
+    account_id = event.get("account_id")  # Optional: target member account
     if not cli_command:
         return {"error": "cli_command parameter is required"}
+
+    # Validate account_id format if provided
+    if account_id:
+        if not re.match(r"^\d{12}$", str(account_id)):
+            return {"error": f"Invalid account_id '{account_id}'. Must be a 12-digit AWS account ID."}
+        account_id = str(account_id)
 
     try:
         service, operation, params, region = parse_cli_command(cli_command)
@@ -238,7 +297,7 @@ def handle_call_aws(event):
         }
 
     try:
-        client = get_aws_client(service, region_name=region)
+        client = get_aws_client(service, region_name=region, account_id=account_id)
         api_method = getattr(client, operation, None)
         if api_method is None:
             return {
@@ -257,7 +316,8 @@ def handle_call_aws(event):
 
         # Handle pagination: if there's a NextToken/Marker, note it
         result = _serialize_response(response)
-        return {"cli_command": cli_command, "result": result}
+        target = f"account {account_id}" if account_id else "payer/management account"
+        return {"cli_command": cli_command, "target_account": target, "result": result}
 
     except client.exceptions.ClientError as e:
         return {

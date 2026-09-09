@@ -77,6 +77,16 @@ cur_athena_output_location = "s3://finops-mcp-<COST_ACCOUNT_ID>-athena-results/"
 enable_vpc = false
 
 # -----------------------------------------------------------------------------
+# Member Account Dynamic Assume (Optional)
+# -----------------------------------------------------------------------------
+
+# IAM role name in member accounts for cross-account resource queries.
+# Created manually or via StackSets (see Step 3b in deployment guide).
+# Leave empty to disable member account queries.
+member_role_name   = "finops-mcp-readonly"
+member_external_id = "<MEMBER_EXTERNAL_ID from Step 3b>"
+
+# -----------------------------------------------------------------------------
 # Optional
 # -----------------------------------------------------------------------------
 

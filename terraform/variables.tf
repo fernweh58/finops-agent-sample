@@ -161,6 +161,19 @@ variable "management_external_id" {
   sensitive   = true
 }
 
+variable "member_role_name" {
+  description = "IAM role name in member accounts for dynamic cross-account assume (deployed via StackSets). Empty = disabled."
+  type        = string
+  default     = "finops-mcp-readonly"
+}
+
+variable "member_external_id" {
+  description = "External ID for member account role assumption (must match StackSets-deployed role)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # -----------------------------------------------------------------------------
 # CUR Configuration
 # -----------------------------------------------------------------------------

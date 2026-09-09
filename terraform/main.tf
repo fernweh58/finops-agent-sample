@@ -286,27 +286,38 @@ module "mcp_athena" {
   tags = local.common_tags
 }
 
-# AWS API Cross-Account MCP Lambda - Read-only resource queries in payer account
+# AWS API Cross-Account MCP Lambda - Read-only resource queries in payer + member accounts
 module "mcp_aws_api_cross_account" {
   source = "./modules/mcp-lambda"
 
   project_name        = var.project_name
   server_name         = "aws-api-cross-account"
-  description         = "Cross-account AWS API tools for querying payer account resources (read-only)"
+  description         = "Cross-account AWS API tools for querying payer and member account resources (read-only)"
   source_file         = "${path.module}/../src/lambda/mcp_servers/aws_api_cross_account/lambda_function.py"
   aws_region          = var.aws_region
   timeout             = 30
   memory_size         = 256
   gateway_arn_pattern = local.gateway_arn_pattern
 
-  # Cross-account: assume ReadOnlyAccess role in payer
+  # Cross-account: assume ReadOnlyAccess role in payer (default target)
   cross_account_enabled     = local.cross_account_enabled
   cross_account_role_arn    = local.management_role_arn
   cross_account_external_id = local.cross_account_external_id
 
-  # Lambda execution role needs sts:AssumeRole (handled by cross_account_enabled)
-  # plus base permissions for the Lambda to function
-  iam_policy_statements = []
+  # Member account dynamic assume: when account_id is provided in the tool call,
+  # Lambda assumes arn:aws:iam::{account_id}:role/{MEMBER_ROLE_NAME} instead.
+  environment_variables = {
+    MEMBER_ROLE_NAME  = var.member_role_name
+    MEMBER_EXTERNAL_ID = var.member_external_id
+  }
+
+  # Lambda execution role needs sts:AssumeRole for member account roles
+  iam_policy_statements = var.member_role_name != "" ? [
+    {
+      actions   = ["sts:AssumeRole"]
+      resources = ["arn:aws:iam::*:role/${var.member_role_name}"]
+    }
+  ] : []
 
   # Security
   subnet_ids                     = var.enable_vpc ? module.vpc[0].private_subnet_ids : []
